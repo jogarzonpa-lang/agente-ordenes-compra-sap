@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agente de Órdenes de Compra</title>
+<style>
+  :root { --bg:#f5f7f6; --card:#fff; --ink:#1b2b27; --muted:#667873; --brand:#0f5c3f; --warn:#b26a00; --warnbg:#fff6e0; --bad:#a32626; --line:#dbe3e0; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121816; --card:#1b2420; --ink:#e7efec; --muted:#9bb0a9; --brand:#4ec08d; --warn:#f0b34a; --warnbg:#2c2514; --bad:#ff8a8a; --line:#2c3a35; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--ink); display:flex; flex-direction:column; height:100vh; }
+  header { padding:12px 16px; background:var(--card); border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; flex:1; }
+  header small { color:var(--muted); }
+  button { font:inherit; cursor:pointer; border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:8px; padding:6px 12px; }
+  button.primary { background:var(--brand); color:#fff; border-color:var(--brand); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  #chat { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .msg { max-width:860px; padding:10px 14px; border-radius:12px; border:1px solid var(--line); background:var(--card); }
+  .msg.user { align-self:flex-end; background:var(--brand); color:#fff; border-color:var(--brand); }
+  .msg.agent { align-self:flex-start; width:100%; }
+  .msg.error { border-color:var(--bad); color:var(--bad); }
+  .msg.confirm { border:2px solid var(--warn); background:var(--warnbg); }
+  .banner { font-weight:600; color:var(--warn); margin-bottom:6px; }
+  .acciones { margin-top:8px; display:flex; gap:8px; }
+  .tool { font-size:13px; border:1px solid var(--line); border-radius:8px; margin:6px 0; background:var(--bg); }
+  .tool summary { padding:6px 10px; cursor:pointer; display:flex; gap:8px; align-items:baseline; }
+  .tool.fail summary { color:var(--bad); }
+  .tool .nombre { font-family:ui-monospace, monospace; font-weight:600; }
+  .tool .res { color:var(--muted); }
+  .tool pre { margin:0; padding:8px 10px; overflow-x:auto; border-top:1px solid var(--line); font-size:12px; }
+  table { border-collapse:collapse; width:100%; margin:6px 0; display:block; overflow-x:auto; }
+  th, td { border:1px solid var(--line); padding:4px 8px; text-align:left; font-size:14px; }
+  th { background:var(--bg); }
+  code { background:var(--bg); padding:1px 4px; border-radius:4px; font-size:13px; }
+  .msg p { margin:6px 0; } .msg ul { margin:6px 0; padding-left:20px; }
+  form { display:flex; gap:8px; padding:12px 16px; background:var(--card); border-top:1px solid var(--line); }
+  textarea { flex:1; font:inherit; resize:none; border:1px solid var(--line); border-radius:8px; padding:8px 10px; background:var(--bg); color:var(--ink); }
+  .pensando span { display:inline-block; width:7px; height:7px; margin-right:4px; border-radius:50%; background:var(--muted); animation:p 1s infinite; }
+  .pensando span:nth-child(2){animation-delay:.2s} .pensando span:nth-child(3){animation-delay:.4s}
+  @keyframes p { 0%,80%,100%{opacity:.2} 40%{opacity:1} }
+  .sugerencias { display:flex; gap:8px; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Agente de Órdenes de Compra · SAP simulado</h1>
+  <small id="modelo"></small>
+  <button id="nueva" type="button">Nueva sesión</button>
+</header>
+<div id="chat" aria-live="polite"></div>
+<form id="form">
+  <textarea id="entrada" rows="2" maxlength="2000" placeholder='Ej: Procesa la solicitud "sol-004". Muéstrame la OC como quedaría en SAP y no la crees hasta que yo lo confirme.'></textarea>
+  <button class="primary" id="enviar" type="submit">Enviar</button>
+</form>
+<script>
+const chat = document.getElementById('chat'), entrada = document.getElementById('entrada'), enviar = document.getElementById('enviar')
+let sessionId = localStorage.getItem('oc_session') || crypto.randomUUID()
+localStorage.setItem('oc_session', sessionId)
+let accessKey = sessionStorage.getItem('oc_key') || ''
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]))
+const inline = (s) => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+const esFilaTabla = (l) => /^\s*\|.*\|\s*$/.test(l)
+const esLista = (l) => /^\s*[-*]\s+/.test(l)
+function md(texto) {
+  const lineas = String(texto).split('\n'); let out = '', i = 0
+  const celdas = (r) => r.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim())
+  while (i < lineas.length) {
+    const l = lineas[i]
+    if (esFilaTabla(l) && i + 1 < lineas.length && /^\s*\|[\s:|-]+\|\s*$/.test(lineas[i + 1])) {
+      const cab = celdas(l); i += 2; const filas = []
+      while (i < lineas.length && esFilaTabla(lineas[i])) { filas.push(celdas(lineas[i])); i++ }
+      out += '<table><thead><tr>' + cab.map((h) => '<th>' + inline(h) + '</th>').join('') + '</tr></thead><tbody>' +
+        filas.map((f) => '<tr>' + f.map((c) => '<td>' + inline(c) + '</td>').join('') + '</tr>').join('') + '</tbody></table>'
+      continue
+    }
+    if (esLista(l)) {
+      const items = []
+      while (i < lineas.length && esLista(lineas[i])) { items.push(lineas[i].replace(/^\s*[-*]\s+/, '')); i++ }
+      out += '<ul>' + items.map((x) => '<li>' + inline(x) + '</li>').join('') + '</ul>'; continue
+    }
+    if (/^#{1,4}\s+/.test(l)) { out += '<p><strong>' + inline(l.replace(/^#{1,4}\s+/, '')) + '</strong></p>'; i++; continue }
+    if (l.trim() === '') { i++; continue }
+    const p = [l]; i++
+    while (i < lineas.length && lineas[i].trim() !== '' && !esLista(lineas[i]) && !esFilaTabla(lineas[i]) && !/^#{1,4}\s+/.test(lineas[i])) { p.push(lineas[i]); i++ }
+    out += '<p>' + p.map(inline).join('<br>') + '</p>'
+  }
+  return out
+}
+
+function herramientaHtml(t) {
+  const pretty = (s) => { try { return JSON.stringify(JSON.parse(s), null, 2) } catch { return s } }
+  return '<details class="tool ' + (t.ok ? '' : 'fail') + '"><summary><span class="nombre">' + esc(t.nombre) + '</span><span>' + esc(JSON.stringify(t.args)) +
+    '</span></summary><div class="res" style="padding:0 10px 6px">' + esc(t.resumen) + '</div><pre>' + esc(pretty(t.resultado)) + '</pre></details>'
+}
+
+function descargasHtml(herramientas) {
+  const casos = new Set()
+  for (const t of herramientas) {
+    const m = t.ok && /out\/([A-Za-z0-9_-]+)\/aprobacion\.txt/.exec(t.resultado)
+    if (m) casos.add(m[1])
+  }
+  return [...casos].map((c) => '<div class="acciones"><span>📎 ' + esc(c) + ':</span>' +
+    '<button data-descarga="' + esc(c) + '/aprobacion.pdf">Evidencia PDF</button>' +
+    '<button data-descarga="' + esc(c) + '/aprobacion.txt">Evidencia TXT</button>' +
+    '<button data-descarga="' + esc(c) + '/payload.json">Payload JSON</button></div>').join('')
+}
+
+async function descargar(ruta) {
+  const r = await api('api/archivos/' + ruta, { headers: cabeceras() })
+  if (!r.ok) { alert((await r.json().catch(() => ({}))).error || 'No se pudo descargar'); return }
+  const url = URL.createObjectURL(await r.blob())
+  const a = document.createElement('a'); a.href = url; a.download = ruta.replace('/', '-'); a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 5000)
+}
+
+function pintar(rol, texto, extra = {}) {
+  const div = document.createElement('div')
+  div.className = 'msg ' + (rol === 'usuario' ? 'user' : 'agent') + (extra.error ? ' error' : '') + (extra.confirmar ? ' confirm' : '')
+  let html = ''
+  if (rol === 'agente') {
+    html += (extra.herramientas || []).map(herramientaHtml).join('')
+    if (extra.confirmar) html += '<div class="banner">⚠️ El agente necesita tu confirmación para continuar</div>'
+    html += md(texto)
+    html += descargasHtml(extra.herramientas || [])
+    if (extra.confirmar) html += '<div class="acciones"><button class="primary" data-msg="Confirmo, crea la OC.">Confirmo</button><button data-msg="No, no la crees.">No, cancelar</button></div>'
+  } else html = '<p>' + esc(texto).replace(/\n/g, '<br>') + '</p>'
+  div.innerHTML = html
+  chat.appendChild(div); chat.scrollTop = chat.scrollHeight
+  return div
+}
+
+function cabeceras() { return { 'Content-Type': 'application/json', ...(accessKey ? { 'x-access-key': accessKey } : {}) } }
+
+async function api(ruta, opciones) {
+  let r = await fetch(ruta, opciones)
+  if (r.status === 401) {
+    accessKey = prompt('Este enlace requiere una clave de acceso:') || ''
+    sessionStorage.setItem('oc_key', accessKey)
+    r = await fetch(ruta, { ...opciones, headers: { ...(opciones && opciones.headers), ...(accessKey ? { 'x-access-key': accessKey } : {}) } })
+  }
+  return r
+}
+
+async function cargarHistorial() {
+  try {
+    const r = await api('api/sessions/' + sessionId, { headers: cabeceras() })
+    if (!r.ok) return
+    const d = await r.json()
+    for (const h of d.historial) pintar(h.rol, h.texto, { herramientas: h.herramientas, confirmar: h.necesitaConfirmacion })
+  } catch { /* sin historial */ }
+  if (!chat.children.length) mostrarBienvenida()
+}
+
+function mostrarBienvenida() {
+  const d = pintar('agente', 'Hola. Puedo procesar solicitudes de compra (`sol-001` a `sol-006`): leo el paquete, valido los controles y creo la OC en SAP simulado. Siempre te pediré confirmación cuando haya excepciones.')
+  const s = document.createElement('div'); s.className = 'sugerencias'
+  for (const t of ['Procesa la solicitud "sol-001".', 'Procesa la solicitud "sol-004". Muéstrame la OC como quedaría en SAP, qué validaciones pasó y cuáles no, y no la crees hasta que yo lo confirme.', 'Procesa la solicitud "sol-005".']) {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = t.length > 48 ? t.slice(0, 45) + '…' : t; b.title = t
+    b.onclick = () => { entrada.value = t; entrada.focus() }; s.appendChild(b)
+  }
+  d.appendChild(s)
+}
+
+async function mandar(texto) {
+  if (!texto.trim()) return
+  chat.querySelectorAll('.acciones button').forEach((b) => (b.disabled = true))
+  pintar('usuario', texto); entrada.value = ''; enviar.disabled = true
+  const espera = document.createElement('div'); espera.className = 'msg agent pensando'; espera.innerHTML = '<span></span><span></span><span></span> Procesando…'
+  chat.appendChild(espera); chat.scrollTop = chat.scrollHeight
+  try {
+    const r = await api('api/chat', { method: 'POST', headers: cabeceras(), body: JSON.stringify({ sessionId, message: texto }) })
+    const d = await r.json()
+    espera.remove()
+    if (!r.ok) pintar('agente', d.error || 'Error desconocido', { error: true })
+    else pintar('agente', d.reply, { herramientas: d.toolCalls, confirmar: d.needsConfirmation })
+  } catch {
+    espera.remove(); pintar('agente', 'No pude contactar al servidor. Revisa tu conexión e intenta de nuevo; la sesión sigue activa.', { error: true })
+  } finally { enviar.disabled = false; entrada.focus() }
+}
+
+document.getElementById('form').addEventListener('submit', (e) => { e.preventDefault(); mandar(entrada.value) })
+entrada.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); mandar(entrada.value) } })
+chat.addEventListener('click', (e) => {
+  const d = e.target.closest('button[data-descarga]'); if (d) { descargar(d.dataset.descarga); return }
+  const b = e.target.closest('button[data-msg]'); if (b) mandar(b.dataset.msg)
+})
+document.getElementById('nueva').onclick = () => { sessionId = crypto.randomUUID(); localStorage.setItem('oc_session', sessionId); chat.innerHTML = ''; mostrarBienvenida() }
+fetch('api/health').then((r) => r.json()).then((h) => { document.getElementById('modelo').textContent = h.provider + ' · ' + h.model }).catch(() => {})
+cargarHistorial()
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "name": "reto-03-ordenes-compra",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Agente conversacional de Órdenes de Compra SAP (reto técnico 03)",
+  "scripts": {
+    "dev": "bun run src/server.ts",
+    "start": "bun run src/server.ts",
+    "demo": "bun run demo.ts",
+    "test": "bun run test/agente.test.ts",
+    "probar:modelo": "bun run scripts/probar-modelo.ts",
+    "empaquetar": "bun run scripts/empaquetar-modulo.ts",
+    "dev:node": "tsx src/server.ts",
+    "demo:node": "tsx demo.ts",
+    "test:node": "tsx test/agente.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

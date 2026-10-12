@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agente de Órdenes de Compra SAP — Informe técnico</title>
+<meta name="description" content="Agente conversacional en TypeScript que lee, valida y crea órdenes de compra en un SAP simulado con confirmación humana." />
+<style>
+  :root { --bg:#f6f8f7; --card:#fff; --ink:#18241f; --muted:#5d716a; --brand:#0f5c3f; --brand2:#e6f4ed; --line:#dbe4e0; --warn:#b26a00; --warnbg:#fff6e0; --bad:#a32626; --badbg:#fdeaea; --ok:#176b3a; --okbg:#e6f6ec; --code:#eef3f1; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1512; --card:#18211d; --ink:#e8f0ed; --muted:#9db3ab; --brand:#4ec08d; --brand2:#16281f; --line:#2a3a34; --warn:#f0b34a; --warnbg:#2c2514; --bad:#ff8a8a; --badbg:#2d1818; --ok:#6fd49a; --okbg:#14261c; --code:#1d2924; } }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin:0; font:16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
+  nav { position:sticky; top:0; z-index:10; background:var(--card); border-bottom:1px solid var(--line); }
+  nav ul { list-style:none; margin:0 auto; padding:0 16px; max-width:1040px; display:flex; gap:4px; overflow-x:auto; }
+  nav a { display:block; padding:12px 12px; color:var(--muted); text-decoration:none; font-size:14px; white-space:nowrap; }
+  nav a:hover { color:var(--brand); }
+  header { background:linear-gradient(135deg,#0b3d2a,#0f5c3f 60%,#1b7d57); color:#fff; padding:56px 16px 48px; }
+  .wrap { max-width:1040px; margin:0 auto; padding:0 16px; }
+  header .wrap { padding:0; }
+  header small { letter-spacing:.12em; text-transform:uppercase; opacity:.8; font-size:12px; }
+  header h1 { font-size:clamp(28px,5vw,44px); line-height:1.15; margin:8px 0 12px; }
+  header p { max-width:720px; opacity:.92; margin:0 0 20px; }
+  .meta { display:flex; gap:20px; flex-wrap:wrap; font-size:14px; opacity:.9; margin-bottom:22px; }
+  .btn { display:inline-block; padding:10px 18px; border-radius:10px; background:#fff; color:#0f5c3f; font-weight:600; text-decoration:none; margin:0 8px 8px 0; }
+  .btn.sec { background:transparent; color:#fff; border:1px solid rgba(255,255,255,.6); }
+  section { padding:44px 0 8px; }
+  h2 { font-size:26px; margin:0 0 6px; }
+  h2 .n { color:var(--brand); margin-right:6px; }
+  h3 { font-size:18px; margin:26px 0 8px; }
+  .lead { color:var(--muted); margin:0 0 18px; }
+  .grid { display:grid; gap:14px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; }
+  .card h4 { margin:0 0 6px; font-size:16px; }
+  .card p { margin:0; color:var(--muted); font-size:15px; }
+  .stat { text-align:center; }
+  .stat b { display:block; font-size:34px; color:var(--brand); line-height:1.1; }
+  .stat span { color:var(--muted); font-size:14px; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; font-size:15px; }
+  th, td { padding:10px 12px; text-align:left; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { background:var(--brand2); font-size:13px; text-transform:uppercase; letter-spacing:.04em; }
+  tr:last-child td { border-bottom:none; }
+  .scroll { overflow-x:auto; }
+  .tag { display:inline-block; padding:2px 9px; border-radius:999px; font-size:12.5px; font-weight:600; white-space:nowrap; }
+  .tag.ok { background:var(--okbg); color:var(--ok); } .tag.warn { background:var(--warnbg); color:var(--warn); } .tag.bad { background:var(--badbg); color:var(--bad); }
+  code { background:var(--code); padding:1px 6px; border-radius:5px; font-size:.9em; }
+  pre { background:var(--code); border:1px solid var(--line); border-radius:12px; padding:14px; overflow-x:auto; font-size:13.5px; line-height:1.5; }
+  pre code { background:none; padding:0; }
+  .callout { border-left:4px solid var(--brand); background:var(--brand2); padding:14px 18px; border-radius:0 12px 12px 0; margin:16px 0; }
+  .callout.warn { border-color:var(--warn); background:var(--warnbg); }
+  .steps { counter-reset:s; list-style:none; padding:0; margin:0; display:grid; gap:12px; }
+  .steps li { counter-increment:s; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px 14px 56px; position:relative; }
+  .steps li::before { content:counter(s); position:absolute; left:14px; top:12px; width:28px; height:28px; border-radius:50%; background:var(--brand); color:#fff; display:grid; place-items:center; font-weight:700; font-size:14px; }
+  svg text { font-family:system-ui, sans-serif; }
+  footer { margin-top:56px; padding:28px 16px; border-top:1px solid var(--line); text-align:center; color:var(--muted); font-size:14px; }
+  footer a { color:var(--brand); }
+</style>
+</head>
+<body>
+<nav><ul>
+  <li><a href="#problema">Problema</a></li><li><a href="#solucion">Solución</a></li><li><a href="#arquitectura">Arquitectura</a></li>
+  <li><a href="#ciclo">Ciclo del agente</a></li><li><a href="#controles">Controles</a></li><li><a href="#resultados">Resultados</a></li>
+  <li><a href="#sap">SAP real</a></li><li><a href="#retroactivas">Retroactivas</a></li><li><a href="#decisiones">Decisiones</a></li><li><a href="#ejecutar">Ejecutar</a></li>
+</ul></nav>
+
+<header><div class="wrap">
+  <small>Informe técnico · Reto 03 · Periferia IT Group</small>
+  <h1>Agente de Órdenes de Compra SAP</h1>
+  <p>Un agente conversacional en TypeScript que lee el paquete de una solicitud de compra, valida los controles, construye la orden de compra y la crea en un SAP simulado, pidiendo confirmación humana cuando hay excepciones.</p>
+  <div class="meta"><span><b>Autor</b> Jose Sebastian Garzon Parra</span><span><b>Fecha</b> Octubre 2026</span><span><b>Stack</b> TypeScript · Bun · zod · OpenAI</span></div>
+  <a class="btn" href="https://jogarzonpa-reto-03.hf.space">🤖 Probar el agente</a>
+  <a class="btn sec" href="https://github.com/jogarzonpa-lang/agente-ordenes-compra-sap">Repositorio</a>
+  <a class="btn sec" href="https://github.com/jogarzonpa-lang/agente-ordenes-compra-sap/blob/main/SOLUCION.md">SOLUCION.md</a>
+</div></header>
+
+<main class="wrap">
+
+<section id="problema">
+  <h2><span class="n">1.</span>El problema</h2>
+  <p class="lead">Hoy la analista de Compras recibe un correo con tres adjuntos y digita la orden a mano en SAP.</p>
+  <div class="grid">
+    <div class="card"><h4>📥 Entrada</h4><p>Solicitud (Excel), cotización del proveedor y correo de aprobación del líder.</p></div>
+    <div class="card"><h4>🧮 Controles de memoria</h4><p>Proveedor activo, aprobador con tope suficiente, subárea correcta, cotización vs solicitud, IVA, plazos…</p></div>
+    <div class="card"><h4>⌨️ Digitación manual</h4><p>Lenta, propensa a error y sin registro de las excepciones que se dejan pasar.</p></div>
+  </div>
+</section>
+
+<section id="solucion">
+  <h2><span class="n">2.</span>La solución</h2>
+  <p class="lead">Lo determinista se hace con código; el modelo orquesta y conversa.</p>
+  <div class="grid">
+    <div class="card stat"><b>10</b><span>controles RC1–RC10 como código puro</span></div>
+    <div class="card stat"><b>5</b><span>herramientas tipadas con zod</span></div>
+    <div class="card stat"><b>13</b><span>pruebas sin red ni clave de modelo</span></div>
+    <div class="card stat"><b>6/6</b><span>casos del demo resueltos como se espera</span></div>
+  </div>
+  <div class="callout"><b>Idea central:</b> el modelo nunca decide un monto ni una confirmación. Los valores salen de las herramientas, y la confirmación humana se fuerza en el backend: una excepción solo se aprueba si el agente preguntó antes y el usuario respondió que sí en su mensaje siguiente.</div>
+</section>
+
+<section id="arquitectura">
+  <h2><span class="n">3.</span>Arquitectura</h2>
+  <p class="lead">Comportamiento, conocimiento y ejecución, separados.</p>
+  <div class="scroll"><svg viewBox="0 0 960 330" width="100%" role="img" aria-label="Diagrama de arquitectura">
+    <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5d716a"/></marker></defs>
+    <g fill="none" stroke="#5d716a" stroke-width="1.6" marker-end="url(#a)">
+      <path d="M150 165 H210"/><path d="M370 165 H430"/><path d="M590 165 H650"/><path d="M510 130 V70 H650"/><path d="M730 200 V240"/><path d="M730 105 V85" /><path d="M590 190 H640 V270 H650"/>
+    </g>
+    <g font-size="14" text-anchor="middle">
+      <rect x="20" y="130" width="130" height="70" rx="12" fill="#e6f4ed" stroke="#0f5c3f"/><text x="85" y="160" fill="#0f5c3f" font-weight="700">Chat web</text><text x="85" y="180" fill="#5d716a" font-size="12">web/index.html</text>
+      <rect x="210" y="130" width="160" height="70" rx="12" fill="#e6f4ed" stroke="#0f5c3f"/><text x="290" y="160" fill="#0f5c3f" font-weight="700">API HTTP</text><text x="290" y="180" fill="#5d716a" font-size="12">src/app.ts</text>
+      <rect x="430" y="130" width="160" height="70" rx="12" fill="#0f5c3f"/><text x="510" y="160" fill="#fff" font-weight="700">Ciclo del agente</text><text x="510" y="180" fill="#cfe9dc" font-size="12">src/agente.ts</text>
+      <rect x="650" y="40" width="260" height="60" rx="12" fill="#fff6e0" stroke="#b26a00"/><text x="780" y="66" fill="#b26a00" font-weight="700">OpenAI (adaptador)</text><text x="780" y="86" fill="#5d716a" font-size="12">intercambiable · src/llm/</text>
+      <rect x="650" y="130" width="260" height="70" rx="12" fill="#e6f4ed" stroke="#0f5c3f"/><text x="780" y="158" fill="#0f5c3f" font-weight="700">Herramientas oc_*</text><text x="780" y="178" fill="#5d716a" font-size="12">zod · registro · log.jsonl</text>
+      <rect x="650" y="240" width="260" height="60" rx="12" fill="#eef3f1" stroke="#5d716a"/><text x="780" y="266" fill="#18241f" font-weight="700">Reglas + SAP simulado</text><text x="780" y="286" fill="#5d716a" font-size="12">rules.ts · sap/ · out/</text>
+      <rect x="430" y="250" width="160" height="50" rx="12" fill="#eef3f1" stroke="#5d716a"/><text x="510" y="272" fill="#18241f" font-weight="700">agent/prompt.md</text><text x="510" y="290" fill="#5d716a" font-size="12">+ conocimiento</text>
+    </g>
+    <path d="M510 250 V205" stroke="#5d716a" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+  </svg></div>
+</section>
+
+<section id="ciclo">
+  <h2><span class="n">4.</span>Ciclo del agente</h2>
+  <ol class="steps">
+    <li><b>El usuario escribe.</b> El backend arma el prompt con el conocimiento del proceso y el historial, y llama al modelo con las 5 herramientas.</li>
+    <li><b>El modelo pide herramientas.</b> Cada llamada se valida con zod, se ejecuta y queda en el historial visible del chat y en <code>out/log.jsonl</code>.</li>
+    <li><b>Confirmación humana.</b> Si hay excepciones, el agente muestra los dos valores en conflicto y pregunta. El backend solo acepta <code>confirmado=true</code> tras esa pregunta y un "sí" explícito del usuario.</li>
+    <li><b>Creación idempotente.</b> La OC se crea en SAP simulado; repetir la solicitud devuelve la misma orden, y se genera la evidencia (PDF + TXT con sha256).</li>
+    <li><b>Topes y errores.</b> Máximo de iteraciones por turno, tokens por sesión y globales; los errores del modelo se muestran en lenguaje claro y la sesión sigue activa.</li>
+  </ol>
+</section>
+
+<section id="controles">
+  <h2><span class="n">5.</span>Matriz de controles</h2>
+  <div class="scroll"><table>
+    <tr><th>Código</th><th>Control</th><th>Efecto</th></tr>
+    <tr><td>RC1</td><td>Proveedor existe en el maestro (NIT normalizado; si no hay NIT, por nombre) y está activo</td><td><span class="tag bad">Bloquea</span></td></tr>
+    <tr><td>RC2</td><td>Hay aprobación con "Aprobado" y quien aprueba es aprobador del centro de costo</td><td><span class="tag bad">Bloquea</span></td></tr>
+    <tr><td>RC3</td><td>El valor no supera el tope del aprobador (sugiere quién sí lo cubre)</td><td><span class="tag bad">Bloquea</span></td></tr>
+    <tr><td>RC4</td><td>El centro de costo existe y la subárea le pertenece</td><td><span class="tag bad">Bloquea</span></td></tr>
+    <tr><td>RC5</td><td>Cotización presente y dentro del 2 % de la solicitud</td><td><span class="tag warn">Confirma</span></td></tr>
+    <tr><td>RC6</td><td>Indicador de IVA informado; si falta se propone el default del proveedor</td><td><span class="tag warn">Confirma</span></td></tr>
+    <tr><td>RC7</td><td>Condiciones de pago informadas; si faltan se usa el default</td><td><span class="tag ok">Informa</span></td></tr>
+    <tr><td>RC8</td><td>La factura no es anterior a la solicitud (OC retroactiva)</td><td><span class="tag warn">Confirma + marca</span></td></tr>
+    <tr><td>RC9</td><td>La aprobación no es anterior a la solicitud</td><td><span class="tag warn">Confirma</span></td></tr>
+    <tr><td>RC10</td><td>cantidad × valor unitario = valor total, con montos positivos</td><td><span class="tag bad">Bloquea</span></td></tr>
+  </table></div>
+  <p class="lead" style="margin-top:12px">Lo más difícil fue RC5/RC8: dependen de texto libre con montos en formato colombiano (<code>11.400.000</code>), NIT con dígito de verificación y referencias de formatos distintos. Si una factura existe pero no se entiende, el sistema falla en vez de ignorarla, porque ignorarla ocultaría una OC retroactiva.</p>
+</section>
+
+<section id="resultados">
+  <h2><span class="n">6.</span>Resultados de los 6 casos</h2>
+  <p class="lead">Ejecutados con <code>demo.ts</code>, llamando directamente a las herramientas, sin modelo de lenguaje.</p>
+  <div class="scroll"><table>
+    <tr><th>Caso</th><th>Situación</th><th>Resultado</th></tr>
+    <tr><td><code>sol-001</code></td><td>Solicitud limpia</td><td><span class="tag ok">OC 4500000001</span></td></tr>
+    <tr><td><code>sol-002</code></td><td>Proveedor inexistente</td><td><span class="tag bad">Bloqueada · RC1</span></td></tr>
+    <tr><td><code>sol-003</code></td><td>Aprobador no autorizado en el centro</td><td><span class="tag bad">Bloqueada · RC2</span></td></tr>
+    <tr><td><code>sol-004</code></td><td>Cotización 26,5 M vs solicitud 25 M (6 %)</td><td><span class="tag warn">Confirma · RC5</span> <span class="tag ok">OC 4500000002</span></td></tr>
+    <tr><td><code>sol-005</code></td><td>Factura del 10-ago, solicitud del 27-ago</td><td><span class="tag warn">Retroactiva · RC8</span> <span class="tag ok">OC 4500000003</span></td></tr>
+    <tr><td><code>sol-006</code></td><td>Indicador de IVA no informado</td><td><span class="tag warn">Confirma · RC6</span> <span class="tag ok">OC 4500000004</span></td></tr>
+    <tr><td><code>sol-001</code> (2.ª vez)</td><td>Reintento</td><td><span class="tag ok">Idempotente · misma OC</span></td></tr>
+  </table></div>
+</section>
+
+<section id="sap">
+  <h2><span class="n">7.</span>Adaptador SAP real (diseño)</h2>
+  <div class="grid">
+    <div class="card"><h4>Integración</h4><p>OData <code>API_PURCHASEORDER_PROCESS_SRV</code> vía Integration Suite, con <i>deep insert</i> atómico. Alternativa en ECC: <code>BAPI_PO_CREATE1</code>.</p></div>
+    <div class="card"><h4>Autenticación</h4><p>OAuth2 <i>client credentials</i> con rol mínimo; secretos en un gestor, nunca en el agente ni en el modelo.</p></div>
+    <div class="card"><h4>Idempotencia</h4><p>El <code>solicitud_id</code> viaja como referencia externa; antes de reintentar un timeout se consulta por esa referencia.</p></div>
+    <div class="card"><h4>Plan B</h4><p>Si no hay conexión: OC lista para pegar (ME21N) o archivo de carga masiva con el payload validado.</p></div>
+  </div>
+  <div class="callout warn"><b>Pendiente con SAP:</b> grupo de compras (obligatorio y ausente del payload), tipo de documento, cuenta de mayor y el uso de la subárea. El detalle del mapeo está en la sección 6 de <a href="https://github.com/jogarzonpa-lang/agente-ordenes-compra-sap/blob/main/SOLUCION.md">SOLUCION.md</a>.</div>
+</section>
+
+<section id="retroactivas">
+  <h2><span class="n">8.</span>Hallazgo de proceso: OC retroactivas</h2>
+  <p>En <code>sol-005</code> la OC se pide <b>después</b> de que llegó la factura, y la propia aprobación lo dice: <i>"Ya llegó la factura, por favor crear la OC para poder radicarla"</i>. La OC está funcionando como un trámite de radicación y no como un control previo: nadie validó precio, proveedor ni presupuesto antes de comprometer.</p>
+  <div class="grid">
+    <div class="card"><h4>1. Medir</h4><p>El agente registra <code>retroactiva</code> en cada intento; <code>control.csv</code> permite medir la tasa y el rezago por área y proveedor.</p></div>
+    <div class="card"><h4>2. Política</h4><p>"Sin OC no hay pago", con una vía de excepción explícita y de nivel superior.</p></div>
+    <div class="card"><h4>3. Prevenir</h4><p>Acuerdos marco u OC abiertas para compras recurrentes, como la papelería trimestral.</p></div>
+    <div class="card"><h4>4. Alertar</h4><p>Aviso a quien aprueba cuando la factura precede a la solicitud.</p></div>
+  </div>
+</section>
+
+<section id="decisiones">
+  <h2><span class="n">9.</span>Decisiones y trade-offs</h2>
+  <div class="scroll"><table>
+    <tr><th>Decisión</th><th>Alternativa descartada</th><th>Por qué</th></tr>
+    <tr><td>Confirmación humana forzada en el backend</td><td>Confiar en que el modelo obedezca el prompt</td><td>Un prompt se puede ignorar; el backend no entrega <code>confirmado=true</code> sin pregunta previa</td></tr>
+    <tr><td>Las herramientas releen el caso e ignoran el paquete del modelo</td><td>Aceptar el paquete que reenvía el modelo</td><td>Elimina el riesgo de que el modelo "arregle" un monto</td></tr>
+    <tr><td>Esquema mínimo visible para el modelo</td><td>Exponer el payload completo</td><td>Menos tokens y sin errores de transcripción; el backend verifica igual</td></tr>
+    <tr><td><code>node:http</code> sin framework</td><td>Express / Hono</td><td>Cuatro rutas no justifican una dependencia; corre igual en Bun y Node</td></tr>
+    <tr><td>Persistencia en archivos</td><td>SQLite</td><td>Simplifica la verificación; se migraría a base de datos en producción</td></tr>
+  </table></div>
+</section>
+
+<section id="ejecutar">
+  <h2><span class="n">10.</span>Cómo ejecutarlo</h2>
+<pre><code>git clone https://github.com/jogarzonpa-lang/agente-ordenes-compra-sap.git
+cd agente-ordenes-compra-sap
+bun install
+
+bun run demo.ts     # 6 casos sin modelo
+bun run test        # 13 pruebas sin red
+
+export OPENAI_API_KEY=sk-...
+bun run dev         # chat en http://localhost:7860</code></pre>
+  <p>También se puede verificar en Kaggle con el <a href="https://github.com/jogarzonpa-lang/agente-ordenes-compra-sap/blob/main/notebooks/kaggle-verificacion.ipynb">notebook del repositorio</a>, que ejecuta este mismo backend.</p>
+</section>
+
+</main>
+
+<footer>
+  Jose Sebastian Garzon Parra · Octubre 2026<br />
+  <a href="https://jogarzonpa-reto-03.hf.space">🤖 Demo del agente</a> · <a href="https://github.com/jogarzonpa-lang/agente-ordenes-compra-sap">GitHub</a>
+</footer>
+</body>
+</html>
